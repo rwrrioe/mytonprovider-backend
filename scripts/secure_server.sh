@@ -36,8 +36,7 @@ ufw allow out 80/tcp
 ufw allow out 443/tcp
 ufw allow out 123/udp
 ufw allow 80/tcp
-ufw allow 16167/tcp
-ufw allow 5432/tcp
+ufw allow 16167/udp
 ufw allow 123/tcp
 ufw allow 22/tcp
 ufw enable
@@ -55,7 +54,7 @@ bantime = 3600
 findtime = 600
 [ufw]
 enabled = true
-port = 80,16167,5432,123,22
+port = 80,16167,123,22
 filter = ufw
 logpath = /var/log/ufw.log
 maxretry = 5
@@ -76,6 +75,7 @@ cp /root/.ssh/authorized_keys /home/"$NEWSUDOUSER"/.ssh/
 chmod 600 /home/"$NEWSUDOUSER"/.ssh/authorized_keys
 chown "$NEWSUDOUSER":"$NEWSUDOUSER" /home/"$NEWSUDOUSER"/.ssh/authorized_keys
 chown -R "$NEWSUDOUSER":"$NEWSUDOUSER" /opt/provider
+mkdir -p /var/log/mytonprovider.app
 chown -R "$NEWSUDOUSER":"$NEWSUDOUSER" /var/log/mytonprovider.app
 echo "$NEWSUDOUSER:$PASSWORD" | chpasswd
 
