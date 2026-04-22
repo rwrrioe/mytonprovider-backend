@@ -34,7 +34,7 @@ func main() {
 
 func run() (err error) {
 	// Tools
-	config := loadConfig()
+	config := MustLoadConfig()
 	if config == nil {
 		fmt.Println("failed to load configuration")
 		return
