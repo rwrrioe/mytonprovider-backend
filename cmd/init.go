@@ -51,7 +51,7 @@ func newPostgresConfig(config *Config, logger *slog.Logger) (dbConfig *pgxpool.C
 	const defaultMaxConnIdleTime = time.Minute * 30
 	const defaultHealthCheckPeriod = time.Minute
 	const defaultConnectTimeout = time.Second * 5
-	const DATABASE_URL string = "postgres://%s:%s@%s:%s/%s"
+	const DATABASE_URL string = "postgres://%s:%s@%s:%s/%s?sslmode=disable"
 
 	user := url.QueryEscape(config.DB.User)
 	password := url.QueryEscape(config.DB.Password)
