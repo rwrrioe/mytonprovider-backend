@@ -5,6 +5,7 @@ import (
 	"crypto/ed25519"
 	"fmt"
 	"log/slog"
+	"mytonprovider-backend/pkg/config"
 	"net/url"
 	"time"
 
@@ -16,7 +17,7 @@ import (
 	"github.com/xssnick/tonutils-storage-provider/pkg/transport"
 )
 
-func connectPostgres(ctx context.Context, config *Config, logger *slog.Logger) (connPool *pgxpool.Pool, err error) {
+func connectPostgres(ctx context.Context, config *config.Config, logger *slog.Logger) (connPool *pgxpool.Pool, err error) {
 	cfg, err := newPostgresConfig(config, logger)
 	if err != nil {
 		return
@@ -44,7 +45,7 @@ func connectPostgres(ctx context.Context, config *Config, logger *slog.Logger) (
 	return
 }
 
-func newPostgresConfig(config *Config, logger *slog.Logger) (dbConfig *pgxpool.Config, err error) {
+func newPostgresConfig(config *config.Config, logger *slog.Logger) (dbConfig *pgxpool.Config, err error) {
 	const defaultMaxConns = int32(12)
 	const defaultMinConns = int32(3)
 	const defaultMaxConnLifetime = time.Hour

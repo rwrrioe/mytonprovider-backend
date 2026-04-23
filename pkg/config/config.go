@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"crypto/ed25519"
@@ -9,7 +9,7 @@ import (
 	"github.com/ilyakaznacheev/cleanenv"
 )
 
-var logLevels = map[uint8]slog.Level{
+var LogLevels = map[uint8]slog.Level{
 	0: slog.LevelDebug,
 	1: slog.LevelInfo,
 	2: slog.LevelWarn,
@@ -26,14 +26,15 @@ type System struct {
 }
 
 type Metrics struct {
-	Namespace        string `yaml:"namespace" env:"NAMESPACE" envDefault:"ton-storage"`
-	ServerSubsystem  string `yaml:"server_subsystem" env:"SERVER_SUBSYSTEM" envDefault:"mtpo-server"`
-	WorkersSubsystem string `yaml:"workers_subsystem" env:"WORKERS_SUBSYSTEM" envDefault:"mtpo-workers"`
-	DbSubsystem      string `yaml:"db_subsystem" env:"DB_SUBSYSTEM" envDefault:"mtpo-db"`
+	Namespace          string `yaml:"namespace" env:"NAMESPACE" envDefault:"ton-storage"`
+	ServerSubsystem    string `yaml:"server_subsystem" env:"SERVER_SUBSYSTEM" envDefault:"mtpo-server"`
+	WorkersSubsystem   string `yaml:"workers_subsystem" env:"WORKERS_SUBSYSTEM" envDefault:"mtpo-workers"`
+	DbSubsystem        string `yaml:"db_subsystem" env:"DB_SUBSYSTEM" envDefault:"mtpo-db"`
+	ProvidersSubsystem string `yaml:"providers_subsystem" env:"PROVIDERS_SUBSYSTEM" envDefault:"mtpo-provider"`
 }
 
 type TON struct {
-	MasterAddress string `env:"MASTER_ADDRESS" required:"true" envDefault:"UQB3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d3d0x0"`
+	MasterAddress string `env:"MASTER_ADDRESS" required:"true"`
 	ConfigURL     string `yaml:"config_url" env:"TON_CONFIG_URL" required:"true"`
 	BatchSize     uint32 `yaml:"batch_size" env:"BATCH_SIZE" required:"true" envDefault:"100"`
 }
