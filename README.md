@@ -32,7 +32,8 @@ chmod +x setup_server.sh
 This will take a few minutes.
 
 ```bash
-DB_USER=pguser DB_PASSWORD=secret DB_NAME=providerdb \
+DB_HOST=db DB_USER=pguser DB_PASSWORD=secret DB_NAME=providerdb \
+MASTER_ADDRESS=UQD...your_ton_master_contract_address... \
 NEWSUDOUSER=johndoe NEWUSER_PASSWORD=newsecurepassword \
 NEWFRONTENDUSER=jdfront \
 DOMAIN=mytonprovider.org INSTALL_SSL=true \
@@ -49,9 +50,13 @@ The script will:
 
 Upon completion, it will print useful commands for managing the server.
 
-**Required variables:** `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `NEWSUDOUSER`, `NEWUSER_PASSWORD`, `NEWFRONTENDUSER`
+**Required variables:** `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `MASTER_ADDRESS`, `NEWSUDOUSER`, `NEWUSER_PASSWORD`, `NEWFRONTENDUSER`
 
 **Optional variables:** `DOMAIN` (defaults to server IP), `INSTALL_SSL` (`true`/`false`), `DB_PORT` (default `5432`), `SYSTEM_PORT` (default `9090`)
+
+> `DB_HOST` should be `db` when running the standard Docker Compose stack (that's the service name in `docker-compose.yml`). Use `localhost` or an external hostname only if the app runs outside Docker.
+>
+> `MASTER_ADDRESS` is the address of the TON master smart contract the backend scans transactions for. Accepted in user-friendly form (`UQ...`/`EQ...`) or raw (`0:abc...`).
 
 ## Dev
 
@@ -123,20 +128,45 @@ Create `.vscode/launch.json`:
 ## Project Structure
 
 ```
-├── cmd/                   # Application entry point, config, initialization
+├── cmd/                   # Application entry point and initialization
 ├── config/                # YAML config files (e.g. dev.yaml)
 ├── pkg/                   # Application packages
 │   ├── cache/             # In-memory cache
+│   ├── clients/           # External service clients (TON, ifconfig)
+│   ├── config/            # Config loader (cleanenv)
 │   ├── httpServer/        # Fiber HTTP server, handlers, middleware
+│   ├── metrics/           # Prometheus metric definitions
 │   ├── models/            # DB and API data models
 │   ├── repositories/      # PostgreSQL queries
 │   ├── services/          # Business logic
-│   ├── tonclient/         # TON blockchain client wrappers
 │   └── workers/           # Background workers
 ├── scripts/               # Setup and utility scripts
 ├── Dockerfile             # Multi-stage Docker build
-└── docker-compose.yml     # Local / production stack
+├── docker-compose.yml     # Local / production stack
+└── docker-compose.test.yml # End-to-end test of setup_server.sh in a container
 ```
+
+## Testing `setup_server.sh`
+
+`docker-compose.test.yml` runs the full `setup_server.sh` flow inside a throwaway Debian container against the host Docker daemon, so you can verify the script without provisioning a real server.
+
+**From WSL** (required on Windows — see note below):
+
+```bash
+cd /mnt/c/path/to/mytonprovider-backend
+docker compose -f docker-compose.test.yml up --build
+```
+
+What happens:
+- The tester container installs Docker CLI, generates SSH keys, and runs `setup_server.sh`
+- `SKIP_CLONE=true` (the project is mounted into the tester), `SKIP_APP_START=false`, `INSTALL_SSL=false`
+- The `app`, `db`, `db_migrate` services start on the host Docker daemon via the shared `/var/run/docker.sock`
+- After setup, access:
+  - App directly: `http://localhost:${SYSTEM_PORT}` (default `9090`)
+  - DB directly: `localhost:${DB_PORT}` (default `5432`)
+  - Nginx inside the tester is not exposed on the host — the test only verifies it installs and configures correctly
+
+> **Windows note:** Run from WSL, not PowerShell. On Windows, `${PWD}` expands to `C:\...` which breaks Docker volume parsing (colon collision) and produces paths the host daemon can't find. WSL gives you `/mnt/c/...` — a Linux-style path that Docker Desktop handles correctly on both sides.
 
 ## API Endpoints
 

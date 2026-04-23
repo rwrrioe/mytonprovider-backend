@@ -30,7 +30,8 @@ chmod +x setup_server.sh
 Займёт несколько минут.
 
 ```bash
-DB_USER=pguser DB_PASSWORD=secret DB_NAME=providerdb \
+DB_HOST=db DB_USER=pguser DB_PASSWORD=secret DB_NAME=providerdb \
+MASTER_ADDRESS=UQD...адрес_мастер_контракта... \
 NEWSUDOUSER=johndoe NEWUSER_PASSWORD=newsecurepassword \
 NEWFRONTENDUSER=jdfront \
 DOMAIN=mytonprovider.org INSTALL_SSL=true \
@@ -47,9 +48,13 @@ bash ./setup_server.sh
 
 По завершении выведет полезные команды для управления сервером.
 
-**Обязательные переменные:** `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `NEWSUDOUSER`, `NEWUSER_PASSWORD`, `NEWFRONTENDUSER`
+**Обязательные переменные:** `DB_HOST`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`, `MASTER_ADDRESS`, `NEWSUDOUSER`, `NEWUSER_PASSWORD`, `NEWFRONTENDUSER`
 
 **Опциональные переменные:** `DOMAIN` (по умолчанию — IP сервера), `INSTALL_SSL` (`true`/`false`), `DB_PORT` (по умолчанию `5432`), `SYSTEM_PORT` (по умолчанию `9090`)
+
+> `DB_HOST` должен быть `db`, когда запускается стандартный стек Docker Compose (это имя сервиса в `docker-compose.yml`). Используйте `localhost` или внешний хост только если приложение работает вне Docker.
+>
+> `MASTER_ADDRESS` — адрес мастер-контракта TON, с которого бэкенд сканирует транзакции. Принимается в user-friendly формате (`UQ...`/`EQ...`) или raw (`0:abc...`).
 
 ## Разработка
 
@@ -121,20 +126,45 @@ docker compose -f docker-compose.yml down
 ## Структура проекта
 
 ```
-├── cmd/                   # Точка входа приложения, конфиг, инициализация
+├── cmd/                   # Точка входа приложения и инициализация
 ├── config/                # YAML конфиги (например dev.yaml)
 ├── pkg/                   # Пакеты приложения
 │   ├── cache/             # Кэш в памяти
+│   ├── clients/           # Клиенты внешних сервисов (TON, ifconfig)
+│   ├── config/            # Загрузчик конфига (cleanenv)
 │   ├── httpServer/        # Fiber HTTP сервер, хандлеры, middleware
+│   ├── metrics/           # Определения метрик Prometheus
 │   ├── models/            # Модели данных для БД и API
 │   ├── repositories/      # Запросы к PostgreSQL
 │   ├── services/          # Бизнес-логика
-│   ├── tonclient/         # Обёртки TON blockchain клиента
 │   └── workers/           # Фоновые воркеры
 ├── scripts/               # Скрипты настройки и утилиты
 ├── Dockerfile             # Многоэтапная Docker сборка
-└── docker-compose.yml     # Локальный / продакшн стек
+├── docker-compose.yml     # Локальный / продакшн стек
+└── docker-compose.test.yml # End-to-end тест setup_server.sh в контейнере
 ```
+
+## Тестирование `setup_server.sh`
+
+`docker-compose.test.yml` прогоняет полный сценарий `setup_server.sh` внутри одноразового Debian-контейнера, используя Docker-демон хоста. Так можно проверить скрипт без реального сервера.
+
+**Из WSL** (на Windows обязательно — см. примечание ниже):
+
+```bash
+cd /mnt/c/path/to/mytonprovider-backend
+docker compose -f docker-compose.test.yml up --build
+```
+
+Что происходит:
+- Тестовый контейнер ставит Docker CLI, генерит SSH ключи и запускает `setup_server.sh`
+- `SKIP_CLONE=true` (проект примонтирован в контейнер), `SKIP_APP_START=false`, `INSTALL_SSL=false`
+- Сервисы `app`, `db`, `db_migrate` поднимаются на хостовом Docker-демоне через общий `/var/run/docker.sock`
+- После setup доступ:
+  - App напрямую: `http://localhost:${SYSTEM_PORT}` (по умолчанию `9090`)
+  - DB напрямую: `localhost:${DB_PORT}` (по умолчанию `5432`)
+  - Nginx внутри tester на хост не проброшен — тест только проверяет что он корректно установился и настроился
+
+> **Про Windows:** запускать нужно из WSL, не из PowerShell. На Windows `${PWD}` разворачивается в `C:\...`, двоеточие ломает парсинг docker volume, плюс хостовый демон не найдёт такие пути. WSL отдаёт `/mnt/c/...` — Linux-стиль путь, который Docker Desktop корректно понимает с обеих сторон.
 
 ## API Эндпоинты
 
