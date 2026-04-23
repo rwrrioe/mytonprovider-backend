@@ -15,7 +15,7 @@ set -e
 
 GITHUB_REPO="dearjohndoe/mytonprovider-backend"
 GITHUB_BRANCH="master"
-WORK_DIR="/opt/provider"
+WORK_DIR="${WORK_DIR:-/opt/provider}"
 
 DB_PORT="${DB_PORT:-5432}"
 SYSTEM_PORT="${SYSTEM_PORT:-9090}"
@@ -33,7 +33,8 @@ print_error()   { echo -e "${RED}[ERROR]${NC} $1"; }
 
 check_required_vars() {
     local required_vars=(
-        "DB_USER" "DB_PASSWORD" "DB_NAME"
+        "DB_HOST" "DB_USER" "DB_PASSWORD" "DB_NAME"
+        "MASTER_ADDRESS"
         "NEWSUDOUSER" "NEWUSER_PASSWORD"
         "NEWFRONTENDUSER"
     )
@@ -65,17 +66,32 @@ install_deps() {
 }
 
 install_docker() {
-    if command -v docker &>/dev/null; then
+    local os_id
+    os_id=$(. /etc/os-release && echo "$ID")
+    if [[ "$os_id" != "debian" && "$os_id" != "ubuntu" ]]; then
+        os_id="ubuntu"
+    fi
+
+    local need_install=false
+    if ! command -v docker &>/dev/null; then
+        need_install=true
+    elif ! docker compose version &>/dev/null; then
+        print_status "Docker present but 'docker compose' plugin missing; installing compose plugin."
+        need_install=true
+    fi
+
+    if ! $need_install; then
         print_status "Docker already installed: $(docker --version)"
         return
     fi
-    print_status "Installing Docker..."
+
+    print_status "Installing Docker (repo for $os_id)..."
     install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-        | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    curl -fsSL "https://download.docker.com/linux/$os_id/gpg" \
+        | gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
     chmod a+r /etc/apt/keyrings/docker.gpg
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
-https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" \
+https://download.docker.com/linux/$os_id $(lsb_release -cs) stable" \
         > /etc/apt/sources.list.d/docker.list
     apt-get update
     apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
@@ -98,7 +114,9 @@ clone_repo() {
 create_env_file() {
     print_status "Creating .env file..."
     cat > "$WORK_DIR/.env" <<EOL
+DB_HOST=${DB_HOST}
 DB_USER=${DB_USER}
+MASTER_ADDRESS=${MASTER_ADDRESS}
 DB_PASSWORD=${DB_PASSWORD}
 DB_NAME=${DB_NAME}
 DB_PORT=${DB_PORT}
@@ -117,7 +135,9 @@ start_app() {
 
 get_server_info() {
     HOST=$(hostname -I | awk '{print $1}')
-    [[ -z "$HOST" ]] && HOST=$(hostname -f)
+    if [[ -z "$HOST" ]]; then
+        HOST=$(hostname -f)
+    fi
 }
 
 execute_script() {
@@ -152,14 +172,26 @@ main() {
     get_server_info
     DOMAIN="${DOMAIN:-$HOST}"
 
-    print_status "Step 1: Cloning repository..."
-    clone_repo
+    if [[ "${SKIP_CLONE:-false}" == "true" ]]; then
+        print_warning "Step 1: SKIP_CLONE=true — using existing $WORK_DIR."
+        if [[ ! -d "$WORK_DIR" ]]; then
+            print_error "SKIP_CLONE=true but $WORK_DIR does not exist."
+            exit 1
+        fi
+    else
+        print_status "Step 1: Cloning repository..."
+        clone_repo
+    fi
 
     print_status "Step 2: Creating application configuration..."
     create_env_file
 
-    print_status "Step 3: Starting application stack..."
-    start_app
+    if [[ "${SKIP_APP_START:-false}" == "true" ]]; then
+        print_warning "Step 3: SKIP_APP_START=true — skipping docker compose up."
+    else
+        print_status "Step 3: Starting application stack..."
+        start_app
+    fi
 
     print_status "Step 4: Setting up Nginx..."
     execute_script "setup_nginx.sh"
@@ -168,8 +200,12 @@ main() {
     export PASSWORD="$NEWUSER_PASSWORD"
     execute_script "secure_server.sh"
 
-    print_status "Step 6: Building and deploying frontend..."
-    su - "$NEWFRONTENDUSER" -c "cd $WORK_DIR/scripts && HOST='$HOST' DOMAIN='$DOMAIN' INSTALL_SSL='$INSTALL_SSL' bash build_frontend.sh"
+    if [[ "${SKIP_FRONTEND:-false}" == "true" ]]; then
+        print_warning "Step 6: SKIP_FRONTEND=true — skipping frontend build."
+    else
+        print_status "Step 6: Building and deploying frontend..."
+        su - "$NEWFRONTENDUSER" -c "cd $WORK_DIR/scripts && HOST='$HOST' DOMAIN='$DOMAIN' INSTALL_SSL='$INSTALL_SSL' bash build_frontend.sh"
+    fi
 
     print_success "Server setup completed successfully!"
     echo ""
