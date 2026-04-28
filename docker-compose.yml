@@ -4,6 +4,8 @@ services:
     depends_on:
       db_migrate:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     ports:
       - "${SYSTEM_PORT}:${SYSTEM_PORT}"
     environment:
@@ -15,6 +17,19 @@ services:
       - ./config:/app/config:ro
     networks:
       - backend
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - backend
+      - bridge_net
 
   db:
     image: postgres:15
@@ -35,6 +50,7 @@ services:
       - .env
     networks:
       - backend
+      - bridge_net
 
   db_migrate:
     image: migrate/migrate:4
@@ -58,6 +74,9 @@ services:
 
 networks:
   backend:
+  bridge_net:
+    external: true
+    name: mtpa_bridge
 
 volumes:
   postgres_data:
