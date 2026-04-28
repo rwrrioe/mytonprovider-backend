@@ -5,11 +5,18 @@
 # Usage:
 # wget https://raw.githubusercontent.com/dearjohndoe/mytonprovider-backend/master/scripts/setup_server.sh
 # chmod +x setup_server.sh
-# DB_USER=<user> DB_PASSWORD=<password> DB_NAME=<db> \
+# DB_HOST=<host> DB_USER=<user> DB_PASSWORD=<password> DB_NAME=<db> \
+# MASTER_ADDRESS=<ton-master-wallet> \
 # NEWSUDOUSER=<newuser> NEWUSER_PASSWORD=<password> \
 # NEWFRONTENDUSER=<frontenduser> \
 # DOMAIN=<domain> INSTALL_SSL=<true|false> \
+# [TAILSCALE_AUTHKEY=tskey-auth-...] \
 # ./setup_server.sh
+#
+# Optional vars:
+#   TAILSCALE_AUTHKEY  — if set, installs tailscale and joins the tailnet
+#                        (so agents from other VPS can reach redis/postgres
+#                        over the private network).
 
 set -e
 
@@ -60,9 +67,28 @@ check_required_vars() {
 
 install_deps() {
     print_status "Installing system dependencies..."
+    export DEBIAN_FRONTEND=noninteractive
     apt-get update
-    apt-get upgrade -y
+    apt-get -y -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" upgrade
     apt-get install -y curl git ca-certificates gnupg lsb-release
+}
+
+install_tailscale() {
+    [[ -z "$TAILSCALE_AUTHKEY" ]] && return
+    if command -v tailscale &>/dev/null; then
+        print_status "Tailscale already installed: $(tailscale version | head -n1)"
+    else
+        print_status "Installing Tailscale..."
+        curl -fsSL https://tailscale.com/install.sh | sh
+    fi
+    if tailscale ip -4 &>/dev/null; then
+        print_status "Tailscale already up: $(tailscale ip -4 | head -n1)"
+    else
+        local hostname_arg=""
+        [[ -n "$TAILSCALE_HOSTNAME" ]] && hostname_arg="--hostname=$TAILSCALE_HOSTNAME"
+        tailscale up --authkey="$TAILSCALE_AUTHKEY" --ssh=false $hostname_arg
+        print_success "Tailscale up: $(tailscale ip -4 | head -n1)"
+    fi
 }
 
 install_docker() {
@@ -103,10 +129,12 @@ https://download.docker.com/linux/$os_id $(lsb_release -cs) stable" \
 clone_repo() {
     print_status "Setting up repository in $WORK_DIR..."
     if [ -d "$WORK_DIR/.git" ]; then
-        print_status "Repository already exists, pulling latest changes..."
-        git -C "$WORK_DIR" pull origin "$GITHUB_BRANCH"
+        print_status "Repository exists, fetching $GITHUB_BRANCH..."
+        git -C "$WORK_DIR" fetch origin "$GITHUB_BRANCH"
+        git -C "$WORK_DIR" checkout "$GITHUB_BRANCH"
+        git -C "$WORK_DIR" reset --hard "origin/$GITHUB_BRANCH"
     else
-        git clone "https://github.com/$GITHUB_REPO" "$WORK_DIR"
+        git clone --branch "$GITHUB_BRANCH" "https://github.com/$GITHUB_REPO" "$WORK_DIR"
     fi
     print_success "Repository ready."
 }
@@ -121,7 +149,7 @@ DB_PASSWORD=${DB_PASSWORD}
 DB_NAME=${DB_NAME}
 DB_PORT=${DB_PORT}
 SYSTEM_PORT=${SYSTEM_PORT}
-CONFIG_PATH=/app/config/dev.yaml
+CONFIG_PATH=${CONFIG_PATH:-config/dev.yaml}
 EOL
     chmod 600 "$WORK_DIR/.env"
     print_success ".env file created."
@@ -169,6 +197,7 @@ main() {
     check_required_vars
     install_deps
     install_docker
+    install_tailscale
     get_server_info
     DOMAIN="${DOMAIN:-$HOST}"
 
