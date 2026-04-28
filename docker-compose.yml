@@ -21,7 +21,10 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      # BIND_HOST defaults to 0.0.0.0 (local dev). In production setup_server.sh
+      # writes BIND_HOST=<tailscale-ip> to .env so redis is only reachable via
+      # the private tailnet and not the public internet.
+      - "${BIND_HOST:-0.0.0.0}:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -38,7 +41,7 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     ports:
-      - "${DB_PORT}:5432"
+      - "${BIND_HOST:-0.0.0.0}:${DB_PORT}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -75,7 +78,6 @@ services:
 networks:
   backend:
   bridge_net:
-    external: true
     name: mtpa_bridge
 
 volumes:
