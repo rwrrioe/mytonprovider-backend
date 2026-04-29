@@ -141,6 +141,17 @@ clone_repo() {
 
 create_env_file() {
     print_status "Creating .env file..."
+
+    # If tailscale is up, bind redis/postgres ONLY to the tailnet interface
+    # (otherwise they would listen on 0.0.0.0 — publicly reachable).
+    # BIND_HOST can be overridden explicitly by the caller.
+    if [[ -z "$BIND_HOST" ]] && command -v tailscale &>/dev/null \
+        && tailscale ip -4 &>/dev/null; then
+        BIND_HOST=$(tailscale ip -4 | head -n1)
+        print_status "Detected tailscale IP, binding redis/postgres to $BIND_HOST."
+    fi
+    BIND_HOST="${BIND_HOST:-127.0.0.1}"
+
     cat > "$WORK_DIR/.env" <<EOL
 DB_HOST=${DB_HOST}
 DB_USER=${DB_USER}
@@ -150,9 +161,10 @@ DB_NAME=${DB_NAME}
 DB_PORT=${DB_PORT}
 SYSTEM_PORT=${SYSTEM_PORT}
 CONFIG_PATH=${CONFIG_PATH:-config/dev.yaml}
+BIND_HOST=${BIND_HOST}
 EOL
     chmod 600 "$WORK_DIR/.env"
-    print_success ".env file created."
+    print_success ".env file created (BIND_HOST=$BIND_HOST)."
 }
 
 start_app() {
