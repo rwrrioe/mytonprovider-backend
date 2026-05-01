@@ -12,9 +12,6 @@ import (
 	"mytonprovider-backend/pkg/redisstream"
 )
 
-// CycleSchedule — расписание одного цикла.
-//
-// Interval — период между триггерами при штатной работе.
 // SingleInflight — если true, перед XADD проверяем XPENDING, чтобы не плодить
 // параллельные триггеры, пока предыдущий не отработан. Защита от двух
 // одновременных scan_master с одним from_lt.
@@ -49,10 +46,10 @@ func New(
 	}
 }
 
-// Run блокирует до ctx.Done(). Запускает goroutine на каждый цикл.
 func (d *Dispatcher) Run(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, s := range d.schedules {
+
 		if !s.Enabled {
 			d.logger.Info(
 				"cycle disabled",
@@ -60,11 +57,13 @@ func (d *Dispatcher) Run(ctx context.Context) {
 			)
 			continue
 		}
+
 		wg.Add(1)
 		go func(s CycleSchedule) {
 			defer wg.Done()
 			d.runCycle(ctx, s)
 		}(s)
+
 		d.logger.Info(
 			"cycle scheduled",
 			slog.String("cycle", s.CycleType),
@@ -83,7 +82,6 @@ func (d *Dispatcher) runCycle(ctx context.Context, s CycleSchedule) {
 		return
 	}
 
-	// первый триггер — сразу же; дальше — по интервалу
 	d.maybeTrigger(ctx, log, s)
 
 	t := time.NewTicker(s.Interval)

@@ -153,7 +153,6 @@ func run() (err error) {
 		logger.Info("result consumer started", slog.String("cycle", b.cycleType))
 	}
 
-	// Dispatcher (cron-like trigger publisher)
 	schedules := make([]dispatcher.CycleSchedule, 0, len(bindings))
 	for _, b := range bindings {
 		schedules = append(schedules, dispatcher.CycleSchedule{

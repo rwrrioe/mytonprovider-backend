@@ -17,18 +17,8 @@ import (
 	systemRepo "mytonprovider-backend/pkg/repositories/system"
 )
 
-// ResultHandler — обработчик одного результата. Вызывается в рамках транзакции
-// уже после успешной dedup-вставки в system.processed_jobs. Должен только
-// применить writes к БД и вернуться без ошибки. XACK сделается caller'ом
-// после COMMIT.
 type ResultHandler func(ctx context.Context, tx pgx.Tx, env jobs.ResultEnvelope) error
 
-// Consumer слушает один result-stream через consumer-group.
-// На каждое сообщение:
-//  1. BEGIN tx
-//  2. system.MarkProcessedTx — если дубль, COMMIT (пустая) и XACK
-//  3. handler в этой же tx
-//  4. COMMIT → XACK; при ошибке ROLLBACK без XACK (сообщение переедет)
 type Consumer struct {
 	rdb        *redis.Client
 	pool       *pgxpool.Pool
@@ -121,10 +111,13 @@ func (c *Consumer) runWorker(ctx context.Context, idx int) {
 			if errors.Is(err, redis.Nil) || errors.Is(err, context.Canceled) {
 				continue
 			}
+
 			if ctx.Err() != nil {
 				return
 			}
+
 			log.Error("xreadgroup", slog.String("error", err.Error()))
+
 			select {
 			case <-ctx.Done():
 				return
@@ -145,7 +138,7 @@ func (c *Consumer) process(ctx context.Context, log *slog.Logger, msg redis.XMes
 	env, err := decodeEnvelope(msg)
 	if err != nil {
 		log.Error("malformed result", slog.String("msg_id", msg.ID), slog.String("error", err.Error()))
-		// XACK — сообщение нечитаемо, не повторим
+		// XACK  сообщение нечитаемо, не повторим
 		c.ack(ctx, log, msg.ID)
 		return
 	}
@@ -159,13 +152,13 @@ func (c *Consumer) process(ctx context.Context, log *slog.Logger, msg redis.XMes
 
 	if env.Status == jobs.StatusError {
 		log.Warn("agent reported error", slog.String("error", env.Error))
-		// fall through — всё равно дедупим и acknowledge'м
+		// fall through  всё равно дедупим и ack
 	}
 
 	committed, err := c.applyTx(ctx, env)
 	if err != nil {
 		log.Error("apply tx failed", slog.String("error", err.Error()))
-		// БЕЗ XACK — сообщение переедет, попробуем снова
+		// БЕЗ XACK  сообщение переедет, попробуем снова
 		return
 	}
 
@@ -177,8 +170,6 @@ func (c *Consumer) process(ctx context.Context, log *slog.Logger, msg redis.XMes
 	c.ack(ctx, log, msg.ID)
 }
 
-// applyTx запускает транзакцию: dedup + handler. Возвращает committed=true
-// если результат был применён в этом вызове (а не дублем).
 func (c *Consumer) applyTx(ctx context.Context, env jobs.ResultEnvelope) (committed bool, err error) {
 	const op = "redisstream.Consumer.applyTx"
 
@@ -198,15 +189,12 @@ func (c *Consumer) applyTx(ctx context.Context, env jobs.ResultEnvelope) (commit
 	}
 
 	if !inserted {
-		// дубль — COMMIT пустой, всё равно отметим
 		if cErr := tx.Commit(ctx); cErr != nil {
 			return false, fmt.Errorf("%s: dup commit: %w", op, cErr)
 		}
 		return false, nil
 	}
 
-	// При status=error агент ничего полезного не вернул — пропускаем handler,
-	// но dedup-запись остаётся, чтобы повторно не переобрабатывать.
 	if env.Status == jobs.StatusOK {
 		if hErr := c.handler(ctx, tx, env); hErr != nil {
 			return false, fmt.Errorf("%s: handler: %w", op, hErr)

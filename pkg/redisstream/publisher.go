@@ -12,15 +12,17 @@ import (
 	"mytonprovider-backend/pkg/jobs"
 )
 
-// Publisher пишет TriggerEnvelope в `mtpa:cycle:<type>` стримы.
-// Бэкенд — owner записи в trigger-стримы (агенты их читают).
 type Publisher struct {
 	rdb          *redis.Client
 	streamPrefix string
 	maxLen       int64
 }
 
-func NewPublisher(rdb *redis.Client, streamPrefix string, maxLen int64) *Publisher {
+func NewPublisher(
+	rdb *redis.Client,
+	streamPrefix string,
+	maxLen int64,
+) *Publisher {
 	return &Publisher{
 		rdb:          rdb,
 		streamPrefix: streamPrefix,
@@ -32,8 +34,6 @@ func (p *Publisher) StreamFor(cycleType string) string {
 	return fmt.Sprintf("%s:cycle:%s", p.streamPrefix, cycleType)
 }
 
-// Trigger публикует TriggerEnvelope для указанного цикла.
-// JobID генерируется автоматически (UUIDv4).
 func (p *Publisher) Trigger(
 	ctx context.Context,
 	cycleType string,
