@@ -1,6 +1,3 @@
-// Package handlers — обработчики результатов агентских циклов из result-стримов.
-// Каждый хендлер вызывается уже внутри активной транзакции и должен только
-// применить writes; commit/rollback делает redisstream.Consumer.
 package handlers
 
 import (
@@ -22,9 +19,9 @@ import (
 const masterWalletLastLTKey = "masterWalletLastLT"
 
 type Set struct {
-	logger     *slog.Logger
-	providers  providersRepo.Repository
-	system     systemRepo.Repository
+	logger    *slog.Logger
+	providers providersRepo.Repository
+	system    systemRepo.Repository
 }
 
 func NewSet(
@@ -39,8 +36,6 @@ func NewSet(
 	}
 }
 
-// Handler возвращает redisstream.ResultHandler для указанного типа цикла.
-// nil — если тип неизвестен.
 func (s *Set) Handler(cycleType string) redisstream.ResultHandler {
 	switch cycleType {
 	case jobs.CycleScanMaster:
